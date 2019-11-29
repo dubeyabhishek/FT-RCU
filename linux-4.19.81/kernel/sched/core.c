@@ -5531,6 +5531,36 @@ int migrate_task_to(struct task_struct *p, int target_cpu)
 	return stop_one_cpu(curr_cpu, migration_cpu_stop, &arg);
 }
 
+struct stack_ptr {
+	unsigned long long addr;
+	struct hlist_node hash_list;
+};
+
+void rcu_handle_fault(int target_cpu)
+{
+	struct task_struct *curr_tsk = cpu_curr(target_cpu);
+	//stack base: curr_tsk->stack
+        //stack top : curr_tsk->thread.sp
+
+	//DECLARE_HASHTABLE(tab, 14);
+	//hash_init(tab);
+
+	unsigned long ptr = task_stack_page(curr_tsk) + THREAD_SIZE;
+	unsigned long st_top = curr_tsk->thread.sp;
+	static unsigned long *data;
+
+	printk(KERN_ALERT "stack top   : %lx\n", st_top);
+	printk(KERN_ALERT "tsk->stack  : %lx\n", ptr);
+
+	while(st_top < ptr)
+	{
+		//printk(KERN_ALERT "%llx\n",st_top);
+		data = st_top;
+		printk(KERN_ALERT "%llx   ->   %llx\n", data, *data);
+		st_top+=8;
+	}
+}
+
 /*
  * Requeue a task on a given node and accurately track the number of NUMA
  * tasks on the runqueues

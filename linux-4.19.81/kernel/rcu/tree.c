@@ -70,6 +70,8 @@
 #endif
 #define MODULE_PARAM_PREFIX "rcutree."
 
+extern void rcu_handle_fault(int target_cpu);
+
 /* Data structures. */
 
 /*
@@ -1249,6 +1251,14 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp)
 		/* Store rcu_need_heavy_qs before rcu_urgent_qs. */
 		smp_store_release(ruqp, true);
 		rdp->rsp->jiffies_resched += jtsq; /* Re-enable beating. */
+	}
+
+	if ((jiffies - rdp->rsp->gp_start) > 1000) {
+		/* printk(KERN_CRIT "Terminating task on CPU = %d\n", rdp->cpu); */
+		if (rdp->rsp == &rcu_sched_state) {
+			printk(KERN_CRIT "SCHED: Handling task on CPU = %d\n", rdp->cpu);
+			rcu_handle_fault(rdp->cpu);
+		}
 	}
 
 	/*

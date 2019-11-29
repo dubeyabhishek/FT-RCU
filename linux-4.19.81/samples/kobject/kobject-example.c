@@ -35,7 +35,27 @@ static ssize_t foo_store(struct kobject *kobj, struct kobj_attribute *attr,
 			 const char *buf, size_t count)
 {
 	int ret;
+	unsigned long long j1, j2;
+	unsigned long obj1 = 0xdeadbeef;
+	j1=jiffies;
+	j2=0;
+	unsigned long *p = &obj1;
+	unsigned long obj2 = 0xfadebeef;
 
+	rcu_read_lock();
+
+	while(j2 <= j1+1010)
+	{
+		j2=jiffies;
+	}
+
+	rcu_read_unlock();
+
+	printk("Address of module local variable obj1   %llx\n", &obj1);
+	printk("Address of module local variable onj2   %llx\n", &obj2);
+	printk("Address of module local pointer of obj1 %llx\n", &p);
+	printk("Size of pointer  %ld\n", sizeof(p));
+	printk("Size of variable %ld\n", sizeof(j1));
 	ret = kstrtoint(buf, 10, &foo);
 	if (ret < 0)
 		return ret;
