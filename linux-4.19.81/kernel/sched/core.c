@@ -5531,10 +5531,39 @@ int migrate_task_to(struct task_struct *p, int target_cpu)
 	return stop_one_cpu(curr_cpu, migration_cpu_stop, &arg);
 }
 
-struct stack_ptr {
-	unsigned long long addr;
-	struct hlist_node hash_list;
+struct stack_data {
+	unsigned long addr;
+	struct list_head next;
 };
+
+int flag = 0;
+struct list_head stack_ptr_lst;
+
+bool has_list(unsigned long entry) {
+
+	struct list_head *ptr = NULL;
+	struct stack_data *node;
+
+	list_for_each (ptr, &stack_ptr_lst)
+	{
+		node = list_entry(ptr, struct stack_data, next);
+		if(node->addr == entry)
+			return true;
+	}
+	return false;
+}
+
+void print_list(void) {
+
+	struct list_head *ptr = NULL;
+	struct stack_data *node;
+
+	list_for_each (ptr, &stack_ptr_lst)
+	{
+		node = list_entry(ptr, struct stack_data, next);
+		printk("Node: %lx\n", node->addr);
+	}
+}
 
 void rcu_handle_fault(int target_cpu)
 {
@@ -5542,23 +5571,38 @@ void rcu_handle_fault(int target_cpu)
 	//stack base: curr_tsk->stack
         //stack top : curr_tsk->thread.sp
 
-	//DECLARE_HASHTABLE(tab, 14);
-	//hash_init(tab);
+	if(!flag) {
 
-	unsigned long ptr = task_stack_page(curr_tsk) + THREAD_SIZE;
-	unsigned long st_top = curr_tsk->thread.sp;
-	static unsigned long *data;
+		INIT_LIST_HEAD(&stack_ptr_lst);
+		unsigned long ptr = task_stack_page(curr_tsk) + THREAD_SIZE;
+		unsigned long st_top = curr_tsk->thread.sp;
+		static unsigned long *data;
+		struct stack_data *p;
 
-	printk(KERN_ALERT "stack top   : %lx\n", st_top);
-	printk(KERN_ALERT "tsk->stack  : %lx\n", ptr);
+		printk(KERN_ALERT "stack top   : %lx\n", st_top);
+		printk(KERN_ALERT "tsk->stack  : %lx\n", ptr);
 
-	while(st_top < ptr)
-	{
-		//printk(KERN_ALERT "%llx\n",st_top);
-		data = st_top;
-		printk(KERN_ALERT "%llx   ->   %llx\n", data, *data);
-		st_top+=8;
+		while(st_top < ptr)
+		{
+			data = st_top;
+			printk(KERN_ALERT "%llx   ->   %llx\n", data, *data);
+
+			if(!has_list(*data)) {
+				p = kzalloc(sizeof(struct stack_data), GFP_KERNEL);
+				p->addr = *data;
+				printk("Inserting %lx\n", p->addr);
+				list_add(&p->next, &stack_ptr_lst);
+			}
+			else {
+				printk("Skipping  %lx\n", *data);
+			}
+			st_top += 8;
+		}
+
+		print_list();
+		flag = 1;
 	}
+
 }
 
 /*
