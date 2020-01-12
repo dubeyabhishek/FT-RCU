@@ -54,6 +54,7 @@ struct rcu_head *rcu_cblist_dequeue(struct rcu_cblist *rclp)
 	rclp->head = rhp->next;
 	if (!rclp->head)
 		rclp->tail = &rclp->head;
+
 	return rhp;
 }
 

@@ -22,6 +22,7 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 
+extern int stack_trace(void*);
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
 #if defined(CONFIG_SCHED_DEBUG) && defined(CONFIG_JUMP_LABEL)
@@ -5552,6 +5553,12 @@ bool has_list(unsigned long entry) {
 	}
 	return false;
 }
+EXPORT_SYMBOL(has_list);
+
+int trace_on_stack(void) {
+	stop_machine(stack_trace, NULL, cpu_online_mask);
+	return 0;
+}
 
 void print_list(void) {
 
@@ -5565,7 +5572,20 @@ void print_list(void) {
 	}
 }
 
-void rcu_handle_fault(int target_cpu)
+void free_stack_list(void) {
+
+	struct list_head *pos = NULL;
+	struct stack_data *node = NULL;
+
+	list_for_each (pos, &stack_ptr_lst)
+	{
+		node = list_entry(pos, struct stack_data, next);
+		list_del(&node->next);
+		//kfree(node);
+	}
+}
+
+int rcu_handle_fault(int target_cpu)
 {
 	struct task_struct *curr_tsk = cpu_curr(target_cpu);
 	//stack base: curr_tsk->stack
@@ -5579,30 +5599,29 @@ void rcu_handle_fault(int target_cpu)
 		static unsigned long *data;
 		struct stack_data *p;
 
-		printk(KERN_ALERT "stack top   : %lx\n", st_top);
-		printk(KERN_ALERT "tsk->stack  : %lx\n", ptr);
+		//printk(KERN_ALERT "stack top   : %lx\n", st_top);
+		//printk(KERN_ALERT "tsk->stack  : %lx\n", ptr);
 
 		while(st_top < ptr)
 		{
 			data = st_top;
-			printk(KERN_ALERT "%llx   ->   %llx\n", data, *data);
 
 			if(!has_list(*data)) {
+				printk(KERN_ALERT "Stack %llx\n", *data);
 				p = kzalloc(sizeof(struct stack_data), GFP_KERNEL);
 				p->addr = *data;
-				printk("Inserting %lx\n", p->addr);
 				list_add(&p->next, &stack_ptr_lst);
-			}
-			else {
-				printk("Skipping  %lx\n", *data);
 			}
 			st_top += 8;
 		}
 
-		print_list();
+		//print_list();
+		trace_on_stack();
 		flag = 1;
+		//free_stack_list();
 	}
 
+	return 0;
 }
 
 /*

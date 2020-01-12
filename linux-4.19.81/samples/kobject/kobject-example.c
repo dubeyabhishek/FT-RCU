@@ -44,7 +44,7 @@ static ssize_t foo_store(struct kobject *kobj, struct kobj_attribute *attr,
 
 	rcu_read_lock();
 
-	while(j2 <= j1+1010)
+	while(j2 <= j1+1050)
 	{
 		j2=jiffies;
 	}

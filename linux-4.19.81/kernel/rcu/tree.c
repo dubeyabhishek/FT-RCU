@@ -71,6 +71,7 @@
 #define MODULE_PARAM_PREFIX "rcutree."
 
 extern void rcu_handle_fault(int target_cpu);
+extern bool has_list(unsigned long entry);
 
 /* Data structures. */
 
@@ -1256,7 +1257,7 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp)
 	if ((jiffies - rdp->rsp->gp_start) > 1000) {
 		/* printk(KERN_CRIT "Terminating task on CPU = %d\n", rdp->cpu); */
 		if (rdp->rsp == &rcu_sched_state) {
-			printk(KERN_CRIT "SCHED: Handling task on CPU = %d\n", rdp->cpu);
+			printk(KERN_INFO "SCHED: Handling task on CPU = %d\n", rdp->cpu);
 			rcu_handle_fault(rdp->cpu);
 		}
 	}
@@ -1281,6 +1282,31 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp)
 
 	return 0;
 }
+
+long callback_cnt[NR_CPUS];
+
+int cross_match(struct rcu_segcblist src_rsclp) {
+
+	callback_cnt[smp_processor_id()] = src_rsclp.len;
+	return 0;
+}
+
+int stack_trace(void* z) {
+	//printk("CPU %d\n", smp_processor_id());
+
+	struct rcu_state *rsp;
+	struct rcu_data *this_rdp;
+
+	for_each_rcu_flavor(rsp) {
+		if(rsp->abbr == 's') {
+			this_rdp = this_cpu_ptr(rsp->rda);
+			printk(KERN_INFO "Control Reaching Here rsp->abbr: %c(CPU %d)\n", rsp->abbr, smp_processor_id());
+			cross_match(this_rdp->cblist);
+		}
+	}
+	return 0;
+}
+EXPORT_SYMBOL(stack_trace);
 
 static void record_gp_stall_check_time(struct rcu_state *rsp)
 {
@@ -2551,6 +2577,9 @@ static void rcu_cleanup_dead_cpu(int cpu, struct rcu_state *rsp)
 	rcu_boost_kthread_setaffinity(rnp, -1);
 }
 
+
+struct rcu_head *sackheadp = NULL;
+struct rcu_head *sacktailp = NULL;
 /*
  * Invoke any RCU callbacks that have made it to the end of their grace
  * period.  Thottle as specified by rdp->blimit.
@@ -2590,17 +2619,33 @@ static void rcu_do_batch(struct rcu_state *rsp, struct rcu_data *rdp)
 	/* Invoke callbacks. */
 	rhp = rcu_cblist_dequeue(&rcl);
 	for (; rhp; rhp = rcu_cblist_dequeue(&rcl)) {
-		debug_rcu_head_unqueue(rhp);
-		if (__rcu_reclaim(rsp->name, rhp))
-			rcu_cblist_dequeued_lazy(&rcl);
-		/*
-		 * Stop only if limit reached and CPU has something to do.
-		 * Note: The rcl structure counts down from zero.
-		 */
-		if (-rcl.len >= bl &&
-		    (need_resched() ||
-		     (!is_idle_task(current) && !rcu_is_callbacks_kthread())))
-			break;
+
+		//callback_cnt[smp_processor_id()]--;
+
+		if (callback_cnt[smp_processor_id()] && has_list(rhp->obj_addr)) {
+			if(rhp->obj_addr)
+				printk(KERN_INFO "Revoked Callback: %lx\n", rhp->obj_addr);
+			if(!sacktailp)
+				sackheadp = sacktailp = rhp;
+			else {
+				sacktailp->next = rhp;
+				sacktailp = rhp;
+			}
+			callback_cnt[smp_processor_id()]--;
+		}
+		else {
+			debug_rcu_head_unqueue(rhp);
+			if (__rcu_reclaim(rsp->name, rhp))
+				rcu_cblist_dequeued_lazy(&rcl);
+			/*
+			* Stop only if limit reached and CPU has something to do.
+			* Note: The rcl structure counts down from zero.
+			*/
+			if (-rcl.len >= bl &&
+			(need_resched() ||
+			(!is_idle_task(current) && !rcu_is_callbacks_kthread())))
+				break;
+		}
 	}
 
 	local_irq_save(flags);

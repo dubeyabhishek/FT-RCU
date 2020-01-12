@@ -224,7 +224,8 @@ struct ustat {
 struct callback_head {
 	struct callback_head *next;
 	void (*func)(struct callback_head *head);
-} __attribute__((aligned(sizeof(void *))));
+	void* obj_addr;
+};
 #define rcu_head callback_head
 
 typedef void (*rcu_callback_t)(struct rcu_head *head);
