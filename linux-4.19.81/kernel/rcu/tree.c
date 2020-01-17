@@ -1300,7 +1300,8 @@ int stack_trace(void* z) {
 	for_each_rcu_flavor(rsp) {
 		if(rsp->abbr == 's') {
 			this_rdp = this_cpu_ptr(rsp->rda);
-			printk(KERN_INFO "Control Reaching Here rsp->abbr: %c(CPU %d)\n", rsp->abbr, smp_processor_id());
+			printk(KERN_CRIT "Control Reaching Here rsp->abbr: %c(CPU %d) CBL %d\n",
+					 rsp->abbr, smp_processor_id(), this_rdp->cblist.len);
 			cross_match(this_rdp->cblist);
 		}
 	}
@@ -2620,20 +2621,26 @@ static void rcu_do_batch(struct rcu_state *rsp, struct rcu_data *rdp)
 	rhp = rcu_cblist_dequeue(&rcl);
 	for (; rhp; rhp = rcu_cblist_dequeue(&rcl)) {
 
-		//callback_cnt[smp_processor_id()]--;
+		if (callback_cnt[smp_processor_id()]) {
 
-		if (callback_cnt[smp_processor_id()] && has_list(rhp->obj_addr)) {
-			if(rhp->obj_addr)
-				printk(KERN_INFO "Revoked Callback: %lx\n", rhp->obj_addr);
-			if(!sacktailp)
-				sackheadp = sacktailp = rhp;
-			else {
-				sacktailp->next = rhp;
-				sacktailp = rhp;
-			}
 			callback_cnt[smp_processor_id()]--;
+			if (has_list(rhp->obj_addr)) {
+				printk(KERN_INFO "Revoked Callback: %lx  P(%d) N(%d)\n",
+				rhp->obj_addr, smp_processor_id(),
+				callback_cnt[smp_processor_id()]);
+
+				if(!sacktailp)
+					sackheadp = sacktailp = rhp;
+				else {
+					sacktailp->next = rhp;
+					sacktailp = rhp;
+				}
+			}
+			else
+				goto label1;
 		}
 		else {
+label1:
 			debug_rcu_head_unqueue(rhp);
 			if (__rcu_reclaim(rsp->name, rhp))
 				rcu_cblist_dequeued_lazy(&rcl);

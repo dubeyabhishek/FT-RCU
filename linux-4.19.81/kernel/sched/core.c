@@ -5606,7 +5606,7 @@ int rcu_handle_fault(int target_cpu)
 		{
 			data = st_top;
 
-			if(!has_list(*data)) {
+			if(!has_list(*data) && (*data & 0xffff000000000000)) {
 				printk(KERN_ALERT "Stack %llx\n", *data);
 				p = kzalloc(sizeof(struct stack_data), GFP_KERNEL);
 				p->addr = *data;
@@ -5615,7 +5615,6 @@ int rcu_handle_fault(int target_cpu)
 			st_top += 8;
 		}
 
-		//print_list();
 		trace_on_stack();
 		flag = 1;
 		//free_stack_list();
